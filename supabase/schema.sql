@@ -109,6 +109,7 @@ declare
   v_member jsonb;
   v_member_order integer;
   v_unique_member_id text;
+  v_member_results jsonb := '[]'::jsonb;
 begin
   v_team_number := nextval('team_number_seq');
   v_team_number_padded := lpad(v_team_number::text, 2, '0');
@@ -178,12 +179,24 @@ begin
       v_member->>'personal_email',
       v_member->>'photo_url'
     );
+
+    v_member_results := v_member_results || jsonb_build_object(
+      'member_order', v_member_order,
+      'full_name', v_member->>'full_name',
+      'unique_member_id', v_unique_member_id
+    );
   end loop;
 
   insert into public.audit_log (team_id, event_type, ip_address, user_agent)
   values (v_team_id, 'registration_submitted', p_ip, p_user_agent);
 
-  return jsonb_build_object('success', true, 'reference_id', v_reference_id, 'team_id', v_team_id);
+  return jsonb_build_object(
+    'success', true,
+    'reference_id', v_reference_id,
+    'team_id', v_team_id,
+    'team_number', v_team_number,
+    'members', v_member_results
+  );
 
 exception when others then
   return jsonb_build_object('success', false, 'error', sqlerrm);

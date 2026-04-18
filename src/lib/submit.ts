@@ -99,21 +99,19 @@ export async function submitRegistration(input: SubmitInput): Promise<SubmitResu
   });
 
   if (error) return { success: false, error: error.message };
-  const res = data as { success: boolean; reference_id?: string; team_id?: string; error?: string };
+  const res = data as {
+    success: boolean;
+    reference_id?: string;
+    team_id?: string;
+    members?: { full_name: string; unique_member_id: string; member_order: number }[];
+    error?: string;
+  };
   if (!res.success) return { success: false, error: res.error ?? "Submission failed" };
 
-  // Compute unique_member_ids client-side for display only (server is source of truth).
-  // We can't read team_number back due to RLS, so we just show the name list with
-  // the same formula format: it's already stored server-side. For the success
-  // screen we re-fetch is blocked by RLS, so we approximate using ref id only.
   return {
     success: true,
     reference_id: res.reference_id,
     team_id: res.team_id,
-    members: input.members.map((m, i) => ({
-      full_name: m.full_name,
-      member_order: i + 1,
-      unique_member_id: "—", // server-generated, not readable from anon
-    })),
+    members: (res.members ?? []).sort((a, b) => a.member_order - b.member_order),
   };
 }

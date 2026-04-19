@@ -1,31 +1,50 @@
 import { useState } from "react";
 import { Field, Panel, SectionTitle } from "@/components/ui-bits";
 import { useFormStore } from "@/lib/store";
-import { teamInfoSchema } from "@/lib/schemas";
-import { cleanAlnumSpaces, clean } from "@/lib/sanitize";
-import { ArrowRight, Cpu, Code2, Factory } from "lucide-react";
+import { teamInfoSchema, problemSchema } from "@/lib/schemas";
+import { cleanAlnumSpaces, clean, cleanCode } from "@/lib/sanitize";
+import { saveDraft } from "@/lib/draft";
+import { ArrowRight, Cpu, Code2, Factory, Loader2 } from "lucide-react";
 
 export function Step1TeamInfo({ onNext }: { onNext: () => void }) {
   const team = useFormStore((s) => s.team);
   const setTeam = useFormStore((s) => s.setTeam);
+  const problem = useFormStore((s) => s.problem);
+  const setProblem = useFormStore((s) => s.setProblem);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
-  const handleNext = () => {
-    const parsed = teamInfoSchema.safeParse({
+  const handleNext = async () => {
+    const teamRes = teamInfoSchema.safeParse({
       team_name: team.team_name ?? "",
       team_size: team.team_size,
       is_svce: team.is_svce ?? false,
-      college_name: team.is_svce ? "Sri Venkateswara College of Engineering" : team.college_name ?? "",
+      college_name: team.is_svce
+        ? "Sri Venkateswara College of Engineering"
+        : team.college_name ?? "",
       category: team.category,
     });
-    if (!parsed.success) {
-      const e: Record<string, string> = {};
-      parsed.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
+    const probRes = problemSchema.safeParse({
+      problem_statement_id: problem.problem_statement_id ?? "",
+      problem_statement_name: problem.problem_statement_name ?? "",
+      company_name: problem.company_name ?? "",
+      category: team.category as never,
+    });
+
+    const e: Record<string, string> = {};
+    if (!teamRes.success) teamRes.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
+    if (!probRes.success) probRes.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
+    if (Object.keys(e).length > 0 || !teamRes.success || !probRes.success) {
       setErrors(e);
       return;
     }
-    setTeam(parsed.data);
+
+    setTeam(teamRes.data);
+    setProblem({ ...probRes.data });
     setErrors({});
+    setSaving(true);
+    await saveDraft();
+    setSaving(false);
     onNext();
   };
 
@@ -34,6 +53,8 @@ export function Step1TeamInfo({ onNext }: { onNext: () => void }) {
     { v: "Software", icon: Code2, hint: "Build with code" },
     { v: "Industry Problem Statement", icon: Factory, hint: "Solve real problems" },
   ] as const;
+
+  const isIndustry = team.category === "Industry Problem Statement";
 
   return (
     <div className="fade-up">
@@ -138,11 +159,50 @@ export function Step1TeamInfo({ onNext }: { onNext: () => void }) {
               })}
             </div>
           </Field>
+
+          {team.category && (
+            <div className="rounded-lg border border-border bg-[oklch(0.16_0.03_270)] p-4 space-y-4">
+              <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyan-edge">
+                Problem Statement
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Problem Statement ID" error={errors.problem_statement_id}>
+                  <input
+                    value={problem.problem_statement_id ?? ""}
+                    onChange={(e) =>
+                      setProblem({ problem_statement_id: cleanCode(e.target.value).toUpperCase() })
+                    }
+                    placeholder="e.g. PS-HW-12"
+                  />
+                </Field>
+                <Field label="Problem Statement Name" error={errors.problem_statement_name}>
+                  <input
+                    value={problem.problem_statement_name ?? ""}
+                    maxLength={160}
+                    onChange={(e) =>
+                      setProblem({ problem_statement_name: clean(e.target.value) })
+                    }
+                    placeholder="Short descriptive title"
+                  />
+                </Field>
+                {isIndustry && (
+                  <Field label="Company Name" error={errors.company_name}>
+                    <input
+                      value={problem.company_name ?? ""}
+                      maxLength={120}
+                      onChange={(e) => setProblem({ company_name: clean(e.target.value) })}
+                      placeholder="Sponsoring company"
+                    />
+                  </Field>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end mt-8">
-          <button className="btn-primary" onClick={handleNext}>
-            Next <ArrowRight size={16} />
+          <button className="btn-primary" onClick={handleNext} disabled={saving}>
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : <>Next <ArrowRight size={16} /></>}
           </button>
         </div>
       </Panel>

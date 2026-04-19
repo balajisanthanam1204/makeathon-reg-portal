@@ -1,4 +1,5 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { AuthProvider } from "@/lib/auth";
 
 import appCss from "../styles.css?url";
 
@@ -29,23 +30,22 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "MAKE-A-THON 7.0" },
-      { name: "description", content: "A secure, full-stack portal for hackathon final registration, collecting team and member data." },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "MAKE-A-THON 7.0" },
-      { property: "og:description", content: "A secure, full-stack portal for hackathon final registration, collecting team and member data." },
+      { title: "Makeathon 7.0 — Final Registration" },
+      { name: "description", content: "Make-a-Thon 7.0: a 24-hour national hackathon by the ECE Department, SVCE. Final-round team registration portal." },
+      { property: "og:title", content: "Makeathon 7.0 — Final Registration" },
+      { property: "og:description", content: "A 24-hour national hackathon by ECE Department, SVCE. Register your finalist team." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "MAKE-A-THON 7.0" },
-      { name: "twitter:description", content: "A secure, full-stack portal for hackathon final registration, collecting team and member data." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/zmqJltrPbhaFErbMYVAXWPlItH73/social-images/social-1776543266555-MAKEATHON_LOGO-removebg-preview.webp" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/zmqJltrPbhaFErbMYVAXWPlItH73/social-images/social-1776543266555-MAKEATHON_LOGO-removebg-preview.webp" },
+      { name: "twitter:title", content: "Makeathon 7.0" },
+      { name: "twitter:description", content: "A 24-hour national hackathon by ECE Department, SVCE." },
     ],
     links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: appCss,
+        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700;800&display=swap",
       },
     ],
   }),
@@ -69,5 +69,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <AuthProvider>
+      <Outlet />
+    </AuthProvider>
+  );
 }

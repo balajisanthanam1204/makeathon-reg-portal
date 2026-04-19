@@ -1,29 +1,50 @@
 import { useEffect, useState } from "react";
 import { Field, Panel, SectionTitle } from "@/components/ui-bits";
 import { useFormStore } from "@/lib/store";
-import { paymentSchema } from "@/lib/schemas";
-import { clean, cleanAlnum } from "@/lib/sanitize";
+import { paymentSchema, payerSchema } from "@/lib/schemas";
+import { clean, cleanAlnum, cleanDigits, cleanLetters } from "@/lib/sanitize";
 import { supabase } from "@/lib/supabase";
-import { ArrowRight, ArrowLeft, Upload, AlertTriangle, FileText } from "lucide-react";
+import { saveDraft } from "@/lib/draft";
+import { randomFileName } from "@/lib/randomName";
+import { PER_MEMBER_FEE, TREASURERS } from "@/lib/constants";
+import {
+  ArrowRight,
+  ArrowLeft,
+  Upload,
+  AlertTriangle,
+  FileText,
+  Loader2,
+  Phone,
+  IndianRupee,
+} from "lucide-react";
 
 const ALLOWED_SCREENSHOT = ["image/jpeg", "image/png", "application/pdf"];
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 
 export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  const team = useFormStore((s) => s.team);
   const payment = useFormStore((s) => s.payment);
   const setPayment = useFormStore((s) => s.setPayment);
+  const payer = useFormStore((s) => s.payer);
+  const setPayer = useFormStore((s) => s.setPayer);
   const screenshot = useFormStore((s) => s.paymentScreenshot);
   const setScreenshot = useFormStore((s) => s.setPaymentScreenshot);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [fileError, setFileError] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const teamSize = (team.team_size as number) ?? 0;
+  const total = teamSize * PER_MEMBER_FEE;
 
   useEffect(() => {
     const { data } = supabase.storage.from("payment-qr").getPublicUrl("qr.png");
     setQrUrl(data.publicUrl);
   }, []);
 
-  const onPick = (file?: File) => {
+  const onPick = async (file?: File) => {
     setFileError(null);
     if (!file) return;
     if (!ALLOWED_SCREENSHOT.includes(file.type)) {
@@ -34,29 +55,59 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
       setFileError("Max 10MB.");
       return;
     }
-    const url = file.type === "application/pdf" ? null : URL.createObjectURL(file);
-    setScreenshot(file, url);
+    setUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not signed in");
+      // remove old
+      if (screenshot.storagePath) {
+        await supabase.storage.from("payment-screenshots").remove([screenshot.storagePath]);
+      }
+      const ext =
+        file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : "jpg";
+      const path = `${user.id}/${randomFileName(ext)}`;
+      const { error } = await supabase.storage
+        .from("payment-screenshots")
+        .upload(path, file, { contentType: file.type, upsert: false });
+      if (error) throw error;
+      const previewUrl = file.type === "application/pdf" ? null : URL.createObjectURL(file);
+      setScreenshot({ storagePath: path, previewUrl, name: file.name, type: file.type });
+      await saveDraft();
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const handleNext = () => {
-    if (!screenshot.file) {
+  const handleNext = async () => {
+    if (!screenshot.storagePath) {
       setFileError("Please upload a payment screenshot.");
+      return;
+    }
+    if (!confirmed) {
+      setFileError("Please confirm the payment details.");
       return;
     }
     const r = paymentSchema.safeParse({
       payment_transaction_id: payment.payment_transaction_id ?? "",
       payment_bank_name: payment.payment_bank_name ?? "",
-      payment_ifsc_code: payment.payment_ifsc_code ?? "",
-      payment_branch_name: payment.payment_branch_name ?? "",
-      payment_branch_code: payment.payment_branch_code ?? "",
     });
-    if (!r.success) {
-      const e: Record<string, string> = {};
-      r.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
+    const r2 = payerSchema.safeParse({
+      payer_name: payer.payer_name ?? "",
+      payer_mobile: payer.payer_mobile ?? "",
+    });
+    const e: Record<string, string> = {};
+    if (!r.success) r.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
+    if (!r2.success) r2.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
+    if (Object.keys(e).length > 0) {
       setErrors(e);
       return;
     }
     setErrors({});
+    setSaving(true);
+    await saveDraft();
+    setSaving(false);
     onNext();
   };
 
@@ -68,6 +119,27 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
           title="Payment"
           subtitle="Pay the registration fee, then upload proof"
         />
+
+        {/* Fee split-up */}
+        <div className="mb-6 rounded-lg border border-spider/40 bg-[oklch(0.58_0.22_25_/_0.08)] p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-spider mb-2">
+            Registration Fee
+          </p>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="font-mono text-sm text-foreground">{teamSize}</span>
+            <span className="font-mono text-xs text-muted-foreground">members ×</span>
+            <span className="font-mono text-sm text-foreground">₹{PER_MEMBER_FEE}</span>
+            <span className="font-mono text-xs text-muted-foreground">=</span>
+            <span className="text-2xl font-bold text-spider flex items-center">
+              <IndianRupee size={20} />
+              {total.toLocaleString("en-IN")}
+            </span>
+          </div>
+          <p className="font-mono text-[11px] text-muted-foreground mt-2">
+            Pay exactly ₹{total.toLocaleString("en-IN")} to the QR code below. Underpayment or
+            wrong details will delay or cause rejection of your team.
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div className="rounded-lg border border-border bg-[oklch(0.16_0.03_270)] p-4 flex flex-col items-center text-center">
@@ -89,8 +161,7 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
               </div>
             )}
             <p className="font-mono text-[11px] text-muted-foreground mt-3 leading-relaxed">
-              Scan this QR code to pay the registration fee. After payment, take a clear screenshot
-              showing the transaction ID.
+              After payment, take a clear screenshot showing the transaction ID.
             </p>
           </div>
 
@@ -103,10 +174,14 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
             </p>
 
             <label className="block w-full">
-              <div className="rounded-md border border-dashed border-border hover:border-spider transition-colors p-5 text-center cursor-pointer">
-                <Upload size={20} className="mx-auto mb-2 text-muted-foreground" />
+              <div className={`rounded-md border border-dashed transition-colors p-5 text-center cursor-pointer ${uploading ? "border-cyan-edge" : "border-border hover:border-spider"}`}>
+                {uploading ? (
+                  <Loader2 size={20} className="mx-auto mb-2 animate-spin text-cyan-edge" />
+                ) : (
+                  <Upload size={20} className="mx-auto mb-2 text-muted-foreground" />
+                )}
                 <p className="font-mono text-xs text-foreground">
-                  {screenshot.file ? screenshot.file.name : "Choose JPG, PNG or PDF"}
+                  {uploading ? "Uploading…" : screenshot.name ? screenshot.name : "Choose JPG, PNG or PDF"}
                 </p>
                 <p className="font-mono text-[10px] text-muted-foreground mt-1">Max 10MB</p>
               </div>
@@ -114,6 +189,7 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
                 type="file"
                 accept="image/jpeg,image/png,application/pdf"
                 className="hidden"
+                disabled={uploading}
                 onChange={(e) => onPick(e.target.files?.[0])}
               />
             </label>
@@ -125,7 +201,7 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
                 className="mt-3 w-full max-h-48 object-contain rounded-md border border-border"
               />
             )}
-            {screenshot.file?.type === "application/pdf" && (
+            {screenshot.type === "application/pdf" && (
               <div className="mt-3 flex items-center gap-2 text-muted-foreground font-mono text-xs">
                 <FileText size={14} /> PDF attached
               </div>
@@ -160,40 +236,67 @@ export function Step5Payment({ onNext, onBack }: { onNext: () => void; onBack: (
               placeholder="State Bank of India"
             />
           </Field>
-          <Field label="IFSC Code" error={errors.payment_ifsc_code} hint="Format: ABCD0123456">
+          <Field label="Payer Name" error={errors.payer_name} hint="Name of the person who paid">
             <input
-              value={payment.payment_ifsc_code ?? ""}
-              onChange={(e) =>
-                setPayment({
-                  payment_ifsc_code: clean(e.target.value).toUpperCase().replace(/[^A-Z0-9]/g, ""),
-                })
-              }
-              maxLength={11}
-              placeholder="SBIN0001234"
+              value={payer.payer_name ?? ""}
+              onChange={(e) => setPayer({ payer_name: cleanLetters(e.target.value) })}
+              placeholder="Peter Parker"
             />
           </Field>
-          <Field label="Branch Name" error={errors.payment_branch_name}>
+          <Field label="Payer Mobile Number" error={errors.payer_mobile} hint="UPI / bank registered number">
             <input
-              value={payment.payment_branch_name ?? ""}
-              onChange={(e) => setPayment({ payment_branch_name: clean(e.target.value) })}
-              placeholder="Pennalur Branch"
-            />
-          </Field>
-          <Field label="Branch Code" error={errors.payment_branch_code}>
-            <input
-              value={payment.payment_branch_code ?? ""}
-              onChange={(e) => setPayment({ payment_branch_code: clean(e.target.value) })}
-              placeholder="01234"
+              inputMode="numeric"
+              value={payer.payer_mobile ?? ""}
+              onChange={(e) => setPayer({ payer_mobile: cleanDigits(e.target.value, 10) })}
+              placeholder="9876543210"
             />
           </Field>
         </div>
 
+        {/* Confirmation checkbox */}
+        <label className="mt-5 flex items-start gap-3 p-4 rounded-md border border-border bg-[oklch(0.18_0.03_270)] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            className="mt-1 w-5 h-5 accent-spider"
+            style={{ minHeight: "auto" }}
+          />
+          <span className="font-mono text-xs text-foreground leading-relaxed">
+            I confirm that I have paid <span className="text-spider">₹{total.toLocaleString("en-IN")}</span>{" "}
+            to the QR code shown above and that all payment details entered are correct.
+            I understand that incorrect details will delay or cause rejection of my team.
+          </span>
+        </label>
+
+        {/* Treasurer POC */}
+        <div className="mt-5 rounded-lg border border-border bg-[oklch(0.16_0.03_270)] p-4">
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-cyan-edge mb-3">
+            Payment Queries · Contact Treasurers
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {TREASURERS.map((t) => (
+              <a
+                key={t.phone}
+                href={`tel:${t.phone.replace(/\s/g, "")}`}
+                className="flex items-center gap-2 p-2 rounded border border-border hover:border-spider transition-colors"
+              >
+                <Phone size={14} className="text-spider" />
+                <div className="min-w-0">
+                  <p className="font-mono text-xs text-foreground truncate">{t.name}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">{t.phone}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+
         <div className="flex justify-between mt-8 gap-3">
-          <button className="btn-ghost" onClick={onBack}>
+          <button className="btn-ghost" onClick={onBack} disabled={saving}>
             <ArrowLeft size={16} className="inline mr-1" /> Back
           </button>
-          <button className="btn-primary" onClick={handleNext}>
-            Next <ArrowRight size={16} />
+          <button className="btn-primary" onClick={handleNext} disabled={saving || uploading}>
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : <>Next <ArrowRight size={16} /></>}
           </button>
         </div>
       </Panel>

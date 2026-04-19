@@ -3,17 +3,20 @@ import { Field, Panel, SectionTitle } from "@/components/ui-bits";
 import { useFormStore } from "@/lib/store";
 import { mentorSchema } from "@/lib/schemas";
 import { clean, cleanLetters, cleanDigits } from "@/lib/sanitize";
-import { ArrowRight, ArrowLeft, BadgeCheck } from "lucide-react";
+import { saveDraft } from "@/lib/draft";
+import { ArrowRight, ArrowLeft, BadgeCheck, Loader2 } from "lucide-react";
 
 export function Step3Mentor({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   const team = useFormStore((s) => s.team);
   const mentor = useFormStore((s) => s.mentor);
   const setMentor = useFormStore((s) => s.setMentor);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const r = mentorSchema.safeParse({
       mentor_name: mentor.mentor_name ?? "",
+      mentor_designation: mentor.mentor_designation ?? "",
       mentor_department: mentor.mentor_department ?? "",
       mentor_phone: mentor.mentor_phone ?? "",
       mentor_email: mentor.mentor_email ?? "",
@@ -25,6 +28,9 @@ export function Step3Mentor({ onNext, onBack }: { onNext: () => void; onBack: ()
       return;
     }
     setErrors({});
+    setSaving(true);
+    await saveDraft();
+    setSaving(false);
     onNext();
   };
 
@@ -33,7 +39,7 @@ export function Step3Mentor({ onNext, onBack }: { onNext: () => void; onBack: ()
       <Panel>
         <SectionTitle
           index="STEP 03 / 06"
-          title="Mentor & Classification"
+          title="Mentor Details"
           subtitle="Faculty mentor responsible for the team"
         />
 
@@ -53,6 +59,13 @@ export function Step3Mentor({ onNext, onBack }: { onNext: () => void; onBack: ()
                 value={mentor.mentor_name ?? ""}
                 onChange={(e) => setMentor({ mentor_name: cleanLetters(e.target.value) })}
                 placeholder="Dr. May Parker"
+              />
+            </Field>
+            <Field label="Designation" error={errors.mentor_designation}>
+              <input
+                value={mentor.mentor_designation ?? ""}
+                onChange={(e) => setMentor({ mentor_designation: clean(e.target.value) })}
+                placeholder="Associate Professor"
               />
             </Field>
             <Field label="Mentor Department" error={errors.mentor_department}>
@@ -87,8 +100,8 @@ export function Step3Mentor({ onNext, onBack }: { onNext: () => void; onBack: ()
           <button className="btn-ghost" onClick={onBack}>
             <ArrowLeft size={16} className="inline mr-1" /> Back
           </button>
-          <button className="btn-primary" onClick={handleNext}>
-            Next <ArrowRight size={16} />
+          <button className="btn-primary" onClick={handleNext} disabled={saving}>
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : <>Next <ArrowRight size={16} /></>}
           </button>
         </div>
       </Panel>

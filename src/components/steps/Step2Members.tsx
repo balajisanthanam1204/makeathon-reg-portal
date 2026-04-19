@@ -8,7 +8,8 @@ import {
   cleanDigits,
   cleanUpperAlnum,
 } from "@/lib/sanitize";
-import { ArrowRight, ArrowLeft, Crown, User } from "lucide-react";
+import { saveDraft } from "@/lib/draft";
+import { ArrowRight, ArrowLeft, Crown, User, Loader2 } from "lucide-react";
 
 const DEPTS = ["ECE", "CSE", "IT", "MECH", "CIVIL", "EEE", "AIDS", "AIML", "Other"] as const;
 const YEARS = ["1st", "2nd", "3rd", "4th"] as const;
@@ -18,22 +19,23 @@ export function Step2Members({ onNext, onBack }: { onNext: () => void; onBack: (
   const members = useFormStore((s) => s.members);
   const setMember = useFormStore((s) => s.setMember);
   const [errors, setErrors] = useState<Record<number, Record<string, string>>>({});
+  const [saving, setSaving] = useState(false);
 
   const isSvce = team.is_svce === true;
-  const collegeFromTeam = team.college_name ?? "";
   const schema = memberSchema(isSvce);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const newErr: Record<number, Record<string, string>> = {};
     let ok = true;
     members.forEach((m, i) => {
       const candidate = {
         full_name: m.full_name ?? "",
         department: m.department,
+        department_other: m.department_other ?? "",
         year_of_study: m.year_of_study,
         registration_number: m.registration_number ?? "",
-        college_name: isSvce ? collegeFromTeam : m.college_name ?? "",
         phone_number: m.phone_number ?? "",
+        whatsapp_number: m.whatsapp_number ?? "",
         college_email: m.college_email ?? "",
         personal_email: m.personal_email ?? "",
       };
@@ -44,11 +46,15 @@ export function Step2Members({ onNext, onBack }: { onNext: () => void; onBack: (
         r.error.issues.forEach((iss) => (e[iss.path[0] as string] = iss.message));
         newErr[i] = e;
       } else {
-        setMember(i, { ...candidate });
+        setMember(i, candidate);
       }
     });
     setErrors(newErr);
-    if (ok) onNext();
+    if (!ok) return;
+    setSaving(true);
+    await saveDraft();
+    setSaving(false);
+    onNext();
   };
 
   return (
@@ -65,6 +71,7 @@ export function Step2Members({ onNext, onBack }: { onNext: () => void; onBack: (
             const isLeader = i === 0;
             const e = errors[i] ?? {};
             const update = (patch: Partial<typeof m>) => setMember(i, patch);
+            const isOther = m.department === "Other";
             return (
               <div key={i} className="relative rounded-lg border border-border bg-[oklch(0.16_0.03_270)] p-4 sm:p-5">
                 <div className="flex items-center gap-2 mb-4">
@@ -93,7 +100,7 @@ export function Step2Members({ onNext, onBack }: { onNext: () => void; onBack: (
                       placeholder="Peter Parker"
                     />
                   </Field>
-                  <Field label="Registration Number" error={e.registration_number}>
+                  <Field label="Registration Number (optional)" error={e.registration_number}>
                     <input
                       value={m.registration_number ?? ""}
                       onChange={(ev) =>
@@ -113,30 +120,54 @@ export function Step2Members({ onNext, onBack }: { onNext: () => void; onBack: (
                       ))}
                     </select>
                   </Field>
-                  <Field label="Year of Study" error={e.year_of_study}>
-                    <select
-                      value={m.year_of_study ?? ""}
-                      onChange={(ev) => update({ year_of_study: ev.target.value as typeof YEARS[number] })}
-                    >
-                      <option value="">Select…</option>
-                      {YEARS.map((y) => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="College Name" error={e.college_name}>
-                    <input
-                      value={isSvce ? collegeFromTeam : m.college_name ?? ""}
-                      readOnly={isSvce}
-                      onChange={(ev) => update({ college_name: clean(ev.target.value) })}
-                      className={isSvce ? "opacity-70" : ""}
-                    />
-                  </Field>
+                  {isOther ? (
+                    <Field label="Specify Department" error={e.department_other}>
+                      <input
+                        value={m.department_other ?? ""}
+                        maxLength={60}
+                        onChange={(ev) => update({ department_other: clean(ev.target.value) })}
+                        placeholder="e.g. Bio-Med"
+                      />
+                    </Field>
+                  ) : (
+                    <Field label="Year of Study" error={e.year_of_study}>
+                      <select
+                        value={m.year_of_study ?? ""}
+                        onChange={(ev) => update({ year_of_study: ev.target.value as typeof YEARS[number] })}
+                      >
+                        <option value="">Select…</option>
+                        {YEARS.map((y) => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                  {isOther && (
+                    <Field label="Year of Study" error={e.year_of_study}>
+                      <select
+                        value={m.year_of_study ?? ""}
+                        onChange={(ev) => update({ year_of_study: ev.target.value as typeof YEARS[number] })}
+                      >
+                        <option value="">Select…</option>
+                        {YEARS.map((y) => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
                   <Field label="Phone Number" error={e.phone_number} hint="10-digit Indian mobile">
                     <input
                       inputMode="numeric"
                       value={m.phone_number ?? ""}
                       onChange={(ev) => update({ phone_number: cleanDigits(ev.target.value, 10) })}
+                      placeholder="9876543210"
+                    />
+                  </Field>
+                  <Field label="WhatsApp Number" error={e.whatsapp_number} hint="10-digit number on WhatsApp">
+                    <input
+                      inputMode="numeric"
+                      value={m.whatsapp_number ?? ""}
+                      onChange={(ev) => update({ whatsapp_number: cleanDigits(ev.target.value, 10) })}
                       placeholder="9876543210"
                     />
                   </Field>
@@ -174,8 +205,8 @@ export function Step2Members({ onNext, onBack }: { onNext: () => void; onBack: (
           <button className="btn-ghost" onClick={onBack}>
             <ArrowLeft size={16} className="inline mr-1" /> Back
           </button>
-          <button className="btn-primary" onClick={handleNext}>
-            Next <ArrowRight size={16} />
+          <button className="btn-primary" onClick={handleNext} disabled={saving}>
+            {saving ? <><Loader2 size={16} className="animate-spin" /> Saving…</> : <>Next <ArrowRight size={16} /></>}
           </button>
         </div>
       </Panel>

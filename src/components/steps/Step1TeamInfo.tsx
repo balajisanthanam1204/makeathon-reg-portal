@@ -34,7 +34,7 @@ export function Step1TeamInfo({ onNext }: { onNext: () => void }) {
     const e: Record<string, string> = {};
     if (!teamRes.success) teamRes.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
     if (!probRes.success) probRes.error.issues.forEach((i) => (e[i.path[0] as string] = i.message));
-    if (Object.keys(e).length > 0) {
+    if (Object.keys(e).length > 0 || !teamRes.success || !probRes.success) {
       setErrors(e);
       return;
     }

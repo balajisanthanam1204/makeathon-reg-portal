@@ -2,10 +2,12 @@ import { useEffect } from "react";
 import confetti from "canvas-confetti";
 import type { SubmitResult } from "@/lib/submit";
 import { useFormStore } from "@/lib/store";
-import { CheckCircle2, Crown } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { CheckCircle2, Crown, LogOut } from "lucide-react";
 
 export function SuccessScreen({ result }: { result: SubmitResult }) {
   const leaderEmail = useFormStore.getState().members[0]?.personal_email ?? "your team leader";
+  const { signOut } = useAuth();
 
   useEffect(() => {
     const fire = (ratio: number, opts: confetti.Options) =>
@@ -52,6 +54,11 @@ export function SuccessScreen({ result }: { result: SubmitResult }) {
             <p className="font-mono text-2xl sm:text-3xl font-bold text-foreground tracking-wider">
               {result.reference_id}
             </p>
+            {result.amount_paid && (
+              <p className="font-mono text-[11px] text-muted-foreground mt-2">
+                Amount paid: ₹{result.amount_paid.toLocaleString("en-IN")}
+              </p>
+            )}
           </div>
 
           {result.members && result.members.length > 0 && (
@@ -83,6 +90,10 @@ export function SuccessScreen({ result }: { result: SubmitResult }) {
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-8">
             Save your reference ID for future communication
           </p>
+
+          <button onClick={signOut} className="btn-ghost mt-6">
+            <LogOut size={14} className="inline mr-1" /> Sign Out
+          </button>
         </div>
       </div>
     </div>

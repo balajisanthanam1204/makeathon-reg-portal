@@ -1,8 +1,8 @@
 import imageCompression from "browser-image-compression";
 
 /**
- * Crops an image source URL using a pixel area and returns a 400x400 JPEG Blob
- * compressed to under ~200KB.
+ * Crops an image source URL using a pixel area and returns a 600x600 JPEG Blob
+ * compressed to roughly 500KB-900KB (good for ID-card use).
  */
 export async function getCroppedJpeg(
   imageSrc: string,
@@ -10,13 +10,14 @@ export async function getCroppedJpeg(
 ): Promise<Blob> {
   const image = await loadImage(imageSrc);
   const canvas = document.createElement("canvas");
-  canvas.width = 400;
-  canvas.height = 400;
+  const OUT = 600;
+  canvas.width = OUT;
+  canvas.height = OUT;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("canvas unavailable");
   ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = "#0a0a14";
-  ctx.fillRect(0, 0, 400, 400);
+  ctx.fillRect(0, 0, OUT, OUT);
   ctx.drawImage(
     image,
     pixelCrop.x,
@@ -25,21 +26,21 @@ export async function getCroppedJpeg(
     pixelCrop.height,
     0,
     0,
-    400,
-    400,
+    OUT,
+    OUT,
   );
 
   const blob: Blob = await new Promise((res, rej) =>
-    canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), "image/jpeg", 0.9),
+    canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), "image/jpeg", 0.92),
   );
-  // Compress to ≤200KB
+  // Compress to ≤ 0.85MB (~870KB) for ID-card-quality output.
   const file = new File([blob], "crop.jpg", { type: "image/jpeg" });
   const compressed = await imageCompression(file, {
-    maxSizeMB: 0.2,
-    maxWidthOrHeight: 400,
+    maxSizeMB: 0.85,
+    maxWidthOrHeight: 600,
     useWebWorker: true,
     fileType: "image/jpeg",
-    initialQuality: 0.85,
+    initialQuality: 0.88,
   });
   return compressed;
 }
@@ -65,3 +66,7 @@ export function readFileAsDataURL(file: File): Promise<string> {
 
 export const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png"];
 export const MAX_PHOTO_INPUT_BYTES = 5 * 1024 * 1024;
+
+// Per-photo storage limits
+export const MIN_PHOTO_KB = 100;
+export const MAX_PHOTO_KB = 950;

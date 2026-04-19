@@ -17,3 +17,7 @@ export const cleanDigits = (v: string, max = 10): string =>
 
 export const cleanUpperAlnum = (v: string): string =>
   clean(v).replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+
+// Allows letters, digits, spaces, hyphens, slashes — for problem statement IDs
+export const cleanCode = (v: string): string =>
+  clean(v).replace(/[^a-zA-Z0-9\s\-/_.]/g, "").slice(0, 60);
